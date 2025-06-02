@@ -10,8 +10,9 @@ import torchvision
 import argparse
 import json
 
+from torch.utils.data import Subset
 from src.utils.io import to_json
-from src.metrics import compute_scores, sample_N
+from src.metrics import compute_scores, sample_N, sample_balanced
 from src.rca import RCA
 from src.utils.data_transforms import ToTensor, OneHot, Scale, HUScale
 from src.datasets import *
@@ -52,9 +53,7 @@ def main():
         args.emb_model = None
 
     # Define number of classes to segment based on dataset
-    if args.dataset == 'camus':
-        n_classes = 3
-    elif args.dataset in ['psfhs', 'jsrt', 'wbc/cv', 'wbc/jtsc']:
+    if args.dataset in ['psfhs', 'jsrt', 'wbc/cv', 'wbc/jtsc']:
         n_classes = 2
     else:
         n_classes = 1
@@ -78,11 +77,17 @@ def main():
         transforms = torchvision.transforms.Compose(transforms_list) if transforms_list else None
 
     if args.dataset == 'jsrt':
-        d_reference, d_eval = chestxray.get_jsrt_datasets(transforms)
+        d_reference, d_test, d_cal = chestxray.get_jsrt_datasets(transforms)
     else:
         grayscale = True 
         d_reference = Seg2D_Dataset(split='Train', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
-        d_eval = Seg2D_Dataset(split='Test', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
+        d_test = Seg2D_Dataset(split='Test', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
+        d_cal = Seg2D_Dataset(split='Calibration', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
+        #d_eval_np = Seg2D_Dataset(split='Test', dataset=args.dataset, grayscale=grayscale, target_size=target_size)
+        #scores = compute_scores(d_eval_np, n_classes)
+        #idxs = sample_balanced(scores, n_buckets=4, min_val=0.2)
+        #d_eval = Subset(d_eval, idxs)
+        print('Evaluating', len(d_test), 'samples for test and', len(d_cal), 'samples for calibration')
 
     rca_args = {'eval_metrics': ['Dice', 'Hausdorff', 'HD95', 'ASSD'],
                 'n_test': args.n_test,
@@ -93,7 +98,7 @@ def main():
     # Set checkpoint and configuration in case of using SAM 2 as In-Context classifier
     if args.classifier == 'sam2':
         sam2_checkpoints = 'sam2/checkpoints/'
-        model_type_dict = {'sam2_hiera_t':'sam2_hiera_tiny', 'sam2_hiera_s':'sam2_hiera_small', 'sam2_hiera_b+':'sam2_hiera_base_plus','sam2_hiera_l':'sam2_hiera_large'}
+        model_type_dict = {'sam2_hiera_t':'sam2_hiera_tiny', 'sam2_hiera_s':'sam2_hiera_small', 'sam2_hiera_b+':'sam2_hiera_base_plus','sam2_hiera_l':'sam2_hiera_large', 'sam2.1_hiera_t':'sam2.1_hiera_tiny'}
         
         for k,v in model_type_dict.items():
             model_type_dict[k] = os.path.join(sam2_checkpoints, f'{v}.pt')
@@ -102,9 +107,12 @@ def main():
         rca_args['checkpoint'] = model_type_dict[args.config]
 
     rca_clf = RCA(model=args.classifier, **rca_args)
-    preds = rca_clf.run_evaluation(d_reference, d_eval)
     
-    to_json(preds, args.output_file)
+    preds_test = rca_clf.run_evaluation(d_reference, d_test)
+    to_json(preds_test, args.output_file + '_test.json')
+
+    preds_cal = rca_clf.run_evaluation(d_reference, d_cal)
+    to_json(preds_cal, args.output_file + '_cal.json')
 
 if __name__ == "__main__":
     main()

@@ -6,7 +6,7 @@ from ..utils.data_transforms import process_img
 from ..utils.io import load_train_folder
 
 class TrainerDataset(Dataset):
-    def __init__(self, split: str, dataset: str, target_size: int = 256, transform: Optional[Callable] = None, grayscale: bool = True, transform_img: bool = True):
+    def __init__(self, split: str, dataset: str, target_size: int = 256, transform: Optional[Callable] = None, grayscale: bool = True):
         if split not in ['Train', 'Test']:
             raise ValueError("Invalid split. Must be one of 'Train', 'Test'")
         datasets = ['hc18', 'camus', 'psfhs', 'scd', 'jsrt', 'ph2', 'isic 2018', '3d-ircadb/liver', 'nucls', 'wbc/cv', 'wbc/jtsc']
@@ -15,7 +15,6 @@ class TrainerDataset(Dataset):
         
         dataset = dataset.upper()
         self.grayscale = grayscale
-        self.transform_img = transform_img
         self.path = pathlib.Path(f'datasets/{dataset}')
         self.dataset = dataset
         self.split = split
@@ -28,7 +27,7 @@ class TrainerDataset(Dataset):
 
     def __getitem__(self, idx):
         img_file, label_file = self._data[idx]
-        img = process_img(img_file, self.target_size, grayscale=self.grayscale, transform=self.transform_img)
+        img = process_img(img_file, self.target_size, grayscale=self.grayscale)
         gt = process_img(label_file, self.target_size, is_seg=True) 
         sample = {'image': img, 'GT': gt, 'name': img_file.name}
 

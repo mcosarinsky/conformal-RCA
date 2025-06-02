@@ -119,10 +119,7 @@ def load_test_folder(path: pathlib.Path, dataset: str):
     data = []
     
     for seg_file in sorted(seg_dir.glob("*.png")):
-        if dataset == 'CAMUS':
-            name = pathlib.Path(str(seg_file).split('_epoch')[0]).name
-            idx = name.replace('_', '/') + '.png'
-        elif 'ISIC' in dataset:
+        if 'ISIC' in dataset:
             idx = seg_file.name.split('_')
             idx = idx[0] + '_' + idx[1]
         elif '3D-IRCADB' in dataset:

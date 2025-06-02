@@ -9,9 +9,9 @@ from ..utils.io import load_test_folder, load_train_folder
 
 class Seg2D_Dataset(Dataset):
     def __init__(self, split: str, dataset: str, target_size: int = 256, transform: Optional[Callable] = None, grayscale: bool = True):
-        if split not in ['Train', 'Test']:
-            raise ValueError("Invalid split. Must be one of 'Train', 'Test'")
-        datasets = ['hc18', 'camus', 'psfhs', 'scd', 'jsrt', 'ph2', 'isic 2018', '3d-ircadb/liver', 'nucls', 'wbc/cv', 'wbc/jtsc']
+        if split not in ['Train', 'Test', 'Calibration']:
+            raise ValueError("Invalid split. Must be one of 'Train', 'Test', or 'Calibration'")
+        datasets = ['hc18', 'psfhs', 'scd', 'jsrt', 'ph2', 'isic 2018', '3d-ircadb/liver', 'nucls', 'wbc/cv', 'wbc/jtsc']
         if dataset not in datasets:
             raise ValueError(f"Invalid dataset. Must be one of {datasets}")
         
@@ -28,7 +28,7 @@ class Seg2D_Dataset(Dataset):
         return len(self._data)
 
     def __getitem__(self, idx):
-        if self.split == 'Test':
+        if self.split == 'Test' or self.split == 'Calibration':
             img_file, label_file, seg_file = self._data[idx]
             img = process_img(img_file, self.target_size, grayscale=self.grayscale)
             gt = process_img(label_file, self.target_size, is_seg=True)
@@ -56,6 +56,8 @@ class Seg2D_Dataset(Dataset):
     def load_data(self):
         if self.split == 'Test':
             return load_test_folder(self.path / 'Test', self.dataset)
+        elif self.split == 'Calibration':
+            return load_test_folder(self.path / 'Calibration', self.dataset)
         else:
             return load_train_folder(self.path / 'Train')
         

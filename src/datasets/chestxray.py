@@ -7,29 +7,35 @@ import numpy as np
 from torch.utils.data import Dataset
 import cv2 
 
-def extract_JSRT_segs(path):
+def extract_JSRT_segs(path, file_names):
     segs_files = []
+    target_basenames = set(file_names)
 
     for dirpath, _, filenames in os.walk(path):
         for file in filenames:
-            full_path = os.path.join(dirpath, file)
-            segs_files.append(full_path)
+            if file in target_basenames:
+                full_path = os.path.join(dirpath, file)
+                segs_files.append(full_path)
+
     return segs_files
 
 def get_jsrt_datasets(transforms=None):
     data_path = pathlib.Path('datasets/JSRT')
-    seg_img_path = os.path.join(data_path, 'seg_images')
+    seg_img_cal_path    = os.path.join(data_path, 'seg_images_cal')
+    seg_img_test_path   = os.path.join(data_path, 'seg_images_test')
     ref_img_path = os.path.join(data_path, 'reference_images')
     label_path = os.path.join(data_path, 'landmarks')
     segs_path = os.path.join(data_path, 'DifferentQualities')
 
     ref_images = os.listdir(ref_img_path)
-    segs = extract_JSRT_segs(segs_path)    
+    segs_test = extract_JSRT_segs(segs_path, os.listdir(seg_img_test_path))
+    segs_cal = extract_JSRT_segs(segs_path, os.listdir(seg_img_cal_path))    
     
-    d_eval = LandmarksDataset(images=segs, img_path=seg_img_path, label_path=label_path, is_seg=True, organ=['L', 'H'], transform=transforms) 
+    d_test = LandmarksDataset(images=segs_test, img_path=seg_img_test_path, label_path=label_path, is_seg=True, organ=['L', 'H'], transform=transforms) 
+    d_cal = LandmarksDataset(images=segs_cal, img_path=seg_img_cal_path, label_path=label_path, is_seg=True, organ=['L', 'H'], transform=transforms) 
     d_reference = LandmarksDataset(images=ref_images, img_path=ref_img_path, label_path=label_path, is_seg=False, organ=['L', 'H'], transform=transforms) 
 
-    return d_reference, d_eval
+    return d_reference, d_test, d_cal
 
 class LandmarksDataset(Dataset):
     def __init__(self, images, img_path, label_path, is_seg=False, transform=None, organ = False):

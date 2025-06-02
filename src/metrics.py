@@ -1,4 +1,5 @@
 import medpy.metric.binary as metrics
+from itertools import cycle
 import numpy as np
 
 is_overlap = {
@@ -43,50 +44,66 @@ def compute_scores(data, num_classes, metric=Dice):
     return np.array(scores)
 
 
-def sample_N(scores, N, n_buckets=10, samples_per_bucket=None):
+def sample_N(scores, N, n_buckets=10):
     """
-    Sample a specific number of items from each bucket based on `N` and `n_buckets`.
+    Samples a specific total number of items, distributing samples across buckets.
+    If a bucket cannot fulfill its quota, the remaining samples are distributed
+    evenly among the other buckets that have capacity.
     
     Args:
         scores: Array of scores.
         N: Total number of samples to take.
         n_buckets: Number of buckets to create between 0 and 1 (default is 10).
-        samples_per_bucket: List of integers specifying how many samples to draw from each bucket.
-                            If None, it will evenly distribute `N` samples across the buckets.
-                            The length of the list will determine the number of buckets.
+
     Returns:
         np.array: Indices of the sampled items.
     """
-    if samples_per_bucket is not None:
-        n_buckets = len(samples_per_bucket)
+    bins = np.linspace(0, 1, n_buckets + 1)
+    bucket_indices = np.digitize(scores, bins, right=False) - 1
+    buckets = [np.where(bucket_indices == i)[0] for i in range(n_buckets)]
 
-    # Create `n_buckets` equally spaced bins between 0 and 1
-    bins = np.linspace(0, 1, n_buckets + 1) 
-    bucket_indices = np.digitize(scores, bins, right=False) - 1  # Divide scores into bins
-    buckets = [np.where(bucket_indices == i)[0] for i in range(n_buckets)]  # Indices for each bucket
-
-    # If `samples_per_bucket` is not provided, distribute `N` samples evenly across buckets
-    if samples_per_bucket is None:
-        samples_per_bucket = [N // n_buckets] * n_buckets
-        remainder = N % n_buckets
-        # Distribute the remainder samples across the last few buckets
-        for i in range(n_buckets - remainder, n_buckets):
-            samples_per_bucket[i] += 1
-
-    sampled_indices = []
+    actual_samples_per_bucket = [0] * n_buckets
+    
+    initial_target = [N // n_buckets] * n_buckets
+    remainder_N = N % n_buckets
+    for i in range(n_buckets - remainder_N, n_buckets):
+        initial_target[i] += 1
 
     for i in range(n_buckets):
-        num_samples = samples_per_bucket[i]
+        actual_samples_per_bucket[i] = min(initial_target[i], len(buckets[i]))
+
+    samples_to_redistribute = N - sum(actual_samples_per_bucket)
+
+    if samples_to_redistribute > 0:
+        eligible_bucket_indices_list = [
+            i for i in range(n_buckets) 
+            if len(buckets[i]) > actual_samples_per_bucket[i]
+        ]
         
-        if len(buckets[i]) >= num_samples:  # If there are enough elements in the bucket
-            sampled_indices.extend(np.random.choice(buckets[i], size=num_samples, replace=False))
+        if not eligible_bucket_indices_list:
+            print(f"Warning: Could not fulfill N={N} samples. Only {sum(actual_samples_per_bucket)} sampled as no more items available for redistribution.")
         else:
-            sampled_indices.extend(buckets[i]) # If not enough elements, sample all available 
+            bucket_cycler = cycle(eligible_bucket_indices_list)
+            while samples_to_redistribute > 0:
+                current_bucket_idx = next(bucket_cycler)
+                if actual_samples_per_bucket[current_bucket_idx] < len(buckets[current_bucket_idx]):
+                    actual_samples_per_bucket[current_bucket_idx] += 1
+                    samples_to_redistribute -= 1
+                elif all(actual_samples_per_bucket[idx] >= len(buckets[idx]) for idx in eligible_bucket_indices_list):
+                    # If all eligible buckets are now full, break the loop
+                    print(f"Warning: Could not fulfill N={N} samples. Reached capacity of all eligible buckets. Still needed {samples_to_redistribute} samples.")
+                    break
+    
+    final_sampled_indices = []
+    for i in range(n_buckets):
+        num_to_sample = actual_samples_per_bucket[i]
+        if num_to_sample > 0:
+            final_sampled_indices.extend(np.random.choice(buckets[i], size=num_to_sample, replace=False))
 
-    return np.array(sampled_indices)
+    return np.array(final_sampled_indices)
 
 
-def sample_balanced(scores, n_buckets=10):
+def sample_balanced(scores, n_buckets=10, min_val=0):
     """
     Sample the same number of items from each bucket for each class (if multiclass),
     and return the union of indices without duplicates.
@@ -109,7 +126,7 @@ def sample_balanced(scores, n_buckets=10):
         class_scores = scores[:, c]
 
         # Create bins and assign scores to buckets
-        bins = np.linspace(0, 1, n_buckets + 1)
+        bins = np.linspace(min_val, 1, n_buckets + 1)
         bucket_indices = np.digitize(class_scores, bins, right=False) - 1
         buckets = [np.where(bucket_indices == i)[0] for i in range(n_buckets)]
         min_bucket_size = min(len(b) for b in buckets if len(b) > 0)

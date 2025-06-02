@@ -1,0 +1,13 @@
+git+https://github.com/JJGO/UniverSeg.git
+opencv-python
+torchvision
+torchmetrics
+matplotlib
+seaborn
+tqdm
+faiss-cpu
+transformers
+medpy
+scikit-image
+scikit-learn
+itk-elastix

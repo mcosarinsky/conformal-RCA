@@ -1,8 +1,11 @@
+import sys
+import os
+sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
+
 import torch
 import torch.nn as nn
 import numpy as np
 import argparse
-import os
 import shutil
 import json
 import medpy.metric.binary as metrics
@@ -14,7 +17,7 @@ from pathlib import Path
 from src.utils.data_transforms import Scale, HUScale, ToTensor, OneHot
 from src.utils.io import save_segmentation
 from src.models.unet import UNet
-from src.datasets import TrainerDataset
+from src.datasets import TrainerDataset, chestxray
 
 
 class DiceLoss(nn.Module):
@@ -136,7 +139,7 @@ def main():
     
     if args.dataset == 'camus':
         n_classes = 3
-    elif args.dataset in ['psfhs', 'jsrt']:
+    elif args.dataset in ['psfhs', 'jsrt', 'wbc/cv', 'wbc/jtsc']:
         n_classes = 2
     else:
         n_classes = 1
@@ -148,8 +151,8 @@ def main():
     transforms_list.extend([ToTensor(), OneHot(n_classes=n_classes)])
     transforms = torchvision.transforms.Compose(transforms_list)
 
-    train_dataset = TrainerDataset(split='Train', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size, transform_img=transform_img)
-    test_dataset = TrainerDataset(split='Test', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size, transform_img=transform_img)
+    train_dataset = TrainerDataset(split='Train', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
+    test_dataset = TrainerDataset(split='Test', dataset=args.dataset, transform=transforms, grayscale=grayscale, target_size=target_size)
 
     # Define training arguments
     trainer_args = {'batch_size': args.batch_size, 
@@ -161,7 +164,10 @@ def main():
                     }
 
     n_channels = 1 if grayscale else 3
-    model = UNet(n_channels=n_channels, n_classes=1, batch_norm=True).float()
+    if n_classes > 1:
+        n_classes += 1 # Count background as separate class
+
+    model = UNet(n_channels=n_channels, n_classes=n_classes, batch_norm=True).float()
     print(f'Training with batch size {trainer_args['batch_size']} and learning rate {trainer_args['lr']}')
 
     # Train the model and save scores
